@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createOrderToken } from "@/lib/security/tokens";
@@ -12,6 +13,13 @@ const orderSchema = z.object({
   note: z.string().optional().nullable(),
   items: z.array(z.object({ dishId: z.string().uuid(), quantity: z.number().int().positive() })).min(1)
 });
+
+type OrderItemPayload = {
+  dish_id: string;
+  dish_name: string;
+  quantity: number;
+  unit_price: number;
+};
 
 export async function POST(request: Request) {
   try {
@@ -76,9 +84,14 @@ export async function POST(request: Request) {
         { p_token: payload.orderToken.toUpperCase() }
       );
 
-      const orderForAppend = Array.isArray(existingOrder) ? existingOrder[0] : existingOrder;
+      let orderForAppend = Array.isArray(existingOrder) ? existingOrder[0] : existingOrder;
 
       if (existingOrderError || !orderForAppend) {
+        console.error("Order append lookup RPC failed, trying server fallback", existingOrderError);
+        orderForAppend = await getOrderForAppendWithAdmin(payload.orderToken);
+      }
+
+      if (!orderForAppend) {
         return NextResponse.json({ error: "Original order was not found." }, { status: 404 });
       }
 
@@ -95,8 +108,11 @@ export async function POST(request: Request) {
         });
 
         if (appendError) {
-          console.error("Order append failed", appendError);
-          return NextResponse.json({ error: "Could not update order." }, { status: 500 });
+          console.error("Order append RPC failed, trying server fallback", appendError);
+          const fallback = await appendOrderWithAdmin(orderForAppend.id, payload.note, total, orderItems);
+          if (!fallback.ok) {
+            return NextResponse.json({ error: fallback.error }, { status: 500 });
+          }
         }
 
         return NextResponse.json({ token: orderForAppend.token, appended: true });
@@ -115,8 +131,22 @@ export async function POST(request: Request) {
     });
 
     if (error || !orderToken) {
-      console.error("Order creation failed", error);
-      return NextResponse.json({ error: "Could not create order." }, { status: 500 });
+      console.error("Order creation RPC failed, trying server fallback", error);
+      const fallback = await createOrderWithAdmin({
+        shopId: payload.shopId,
+        token,
+        customerName: payload.customerName,
+        customerPhone: payload.customerPhone,
+        note: payload.note,
+        total,
+        orderItems
+      });
+
+      if (!fallback.ok) {
+        return NextResponse.json({ error: fallback.error }, { status: 500 });
+      }
+
+      return NextResponse.json({ token: fallback.token, appended: false });
     }
 
     return NextResponse.json({ token: orderToken, appended: false });
@@ -127,5 +157,123 @@ export async function POST(request: Request) {
 
     console.error("Order submission failed", error);
     return NextResponse.json({ error: "Could not submit order." }, { status: 500 });
+  }
+}
+
+async function createOrderWithAdmin({
+  shopId,
+  token,
+  customerName,
+  customerPhone,
+  note,
+  total,
+  orderItems
+}: {
+  shopId: string;
+  token: string;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  note?: string | null;
+  total: number;
+  orderItems: OrderItemPayload[];
+}) {
+  try {
+    const admin = createAdminClient();
+    const { data: order, error } = await admin
+      .from("orders")
+      .insert({
+        shop_id: shopId,
+        token,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        note,
+        status: "pending",
+        total_amount: total
+      })
+      .select("id, token")
+      .single();
+
+    if (error || !order) {
+      return { ok: false, error: error?.message ?? "Could not create order." };
+    }
+
+    const { error: itemsError } = await admin
+      .from("order_items")
+      .insert(orderItems.map((item) => ({ ...item, order_id: order.id })));
+
+    if (itemsError) {
+      await admin.from("orders").delete().eq("id", order.id);
+      return { ok: false, error: itemsError.message };
+    }
+
+    return { ok: true, token: order.token };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not create order."
+    };
+  }
+}
+
+async function getOrderForAppendWithAdmin(token: string) {
+  try {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("orders")
+      .select("id, token, status, total_amount, shop_id, shops(is_approved, is_restricted)")
+      .eq("token", token.toUpperCase())
+      .single();
+
+    if (!data) return null;
+
+    const shop = Array.isArray(data.shops) ? data.shops[0] : data.shops;
+    if (!shop?.is_approved || shop.is_restricted) return null;
+
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+async function appendOrderWithAdmin(
+  orderId: string,
+  note: string | null | undefined,
+  total: number,
+  orderItems: OrderItemPayload[]
+) {
+  try {
+    const admin = createAdminClient();
+    const { error: itemsError } = await admin
+      .from("order_items")
+      .insert(orderItems.map((item) => ({ ...item, order_id: orderId })));
+
+    if (itemsError) {
+      return { ok: false, error: itemsError.message };
+    }
+
+    const { data: order } = await admin
+      .from("orders")
+      .select("total_amount, note")
+      .eq("id", orderId)
+      .single();
+
+    const { error: updateError } = await admin
+      .from("orders")
+      .update({
+        total_amount: Number(order?.total_amount ?? 0) + total,
+        note: note || order?.note || null
+      })
+      .eq("id", orderId);
+
+    if (updateError) {
+      return { ok: false, error: updateError.message };
+    }
+
+    return { ok: true, error: "" };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Could not update order."
+    };
   }
 }
