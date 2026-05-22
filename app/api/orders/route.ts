@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createOrderToken } from "@/lib/security/tokens";
 
@@ -32,9 +31,9 @@ export async function POST(request: Request) {
     }
 
     const payload = orderSchema.parse(await request.json());
-    const supabase = await createClient();
+    const admin = createAdminClient();
 
-    const { data: shop, error: shopError } = await supabase
+    const { data: shop, error: shopError } = await admin
       .from("shops")
       .select("id, is_open, is_approved, is_restricted")
       .eq("id", payload.shopId)
@@ -54,7 +53,7 @@ export async function POST(request: Request) {
     }
 
     const dishIds = payload.items.map((item) => item.dishId);
-    const { data: dishes, error: dishesError } = await supabase
+    const { data: dishes, error: dishesError } = await admin
       .from("dishes")
       .select("id, name, price, offer_price, is_available")
       .eq("shop_id", payload.shopId)
@@ -63,6 +62,10 @@ export async function POST(request: Request) {
     if (dishesError) {
       console.error("Order dish lookup failed", dishesError);
       return NextResponse.json({ error: "Could not submit order." }, { status: 500 });
+    }
+
+    if ((dishes ?? []).length !== dishIds.length) {
+      return NextResponse.json({ error: "One or more dishes are unavailable." }, { status: 400 });
     }
 
     const dishMap = new Map((dishes ?? []).map((dish) => [dish.id, dish]));
@@ -79,17 +82,7 @@ export async function POST(request: Request) {
     const total = orderItems.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
 
     if (payload.orderToken) {
-      const { data: existingOrder, error: existingOrderError } = await (supabase as any).rpc(
-        "get_public_order_for_append",
-        { p_token: payload.orderToken.toUpperCase() }
-      );
-
-      let orderForAppend = Array.isArray(existingOrder) ? existingOrder[0] : existingOrder;
-
-      if (existingOrderError || !orderForAppend) {
-        console.error("Order append lookup RPC failed, trying server fallback", existingOrderError);
-        orderForAppend = await getOrderForAppendWithAdmin(payload.orderToken);
-      }
+      const orderForAppend = await getOrderForAppendWithAdmin(payload.orderToken);
 
       if (!orderForAppend) {
         return NextResponse.json({ error: "Original order was not found." }, { status: 404 });
@@ -100,19 +93,9 @@ export async function POST(request: Request) {
       }
 
       if (!["ready", "completed"].includes(orderForAppend.status)) {
-        const { error: appendError } = await (supabase as any).rpc("append_public_order_items", {
-          p_token: orderForAppend.token,
-          p_note: payload.note,
-          p_total_amount: total,
-          p_items: orderItems
-        });
-
-        if (appendError) {
-          console.error("Order append RPC failed, trying server fallback", appendError);
-          const fallback = await appendOrderWithAdmin(orderForAppend.id, payload.note, total, orderItems);
-          if (!fallback.ok) {
-            return NextResponse.json({ error: fallback.error }, { status: 500 });
-          }
+        const append = await appendOrderWithAdmin(orderForAppend.id, payload.note, total, orderItems);
+        if (!append.ok) {
+          return NextResponse.json({ error: append.error }, { status: 500 });
         }
 
         return NextResponse.json({ token: orderForAppend.token, appended: true });
@@ -120,39 +103,31 @@ export async function POST(request: Request) {
     }
 
     const token = createOrderToken();
-    const { data: orderToken, error } = await (supabase as any).rpc("create_public_order", {
-      p_shop_id: payload.shopId,
-      p_token: token,
-      p_customer_name: payload.customerName,
-      p_customer_phone: payload.customerPhone,
-      p_note: payload.note,
-      p_total_amount: total,
-      p_items: orderItems
+    const order = await createOrderWithAdmin({
+      shopId: payload.shopId,
+      token,
+      customerName: payload.customerName,
+      customerPhone: payload.customerPhone,
+      note: payload.note,
+      total,
+      orderItems
     });
 
-    if (error || !orderToken) {
-      console.error("Order creation RPC failed, trying server fallback", error);
-      const fallback = await createOrderWithAdmin({
-        shopId: payload.shopId,
-        token,
-        customerName: payload.customerName,
-        customerPhone: payload.customerPhone,
-        note: payload.note,
-        total,
-        orderItems
-      });
-
-      if (!fallback.ok) {
-        return NextResponse.json({ error: fallback.error }, { status: 500 });
-      }
-
-      return NextResponse.json({ token: fallback.token, appended: false });
+    if (!order.ok) {
+      return NextResponse.json({ error: order.error }, { status: 500 });
     }
 
-    return NextResponse.json({ token: orderToken, appended: false });
+    return NextResponse.json({ token: order.token, appended: false });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid order details." }, { status: 400 });
+    }
+
+    if (error instanceof Error && error.message.includes("SUPABASE_SERVICE_ROLE_KEY")) {
+      return NextResponse.json(
+        { error: "Order service is not configured. Missing server Supabase key." },
+        { status: 500 }
+      );
     }
 
     console.error("Order submission failed", error);
