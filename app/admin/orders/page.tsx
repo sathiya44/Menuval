@@ -1,8 +1,13 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import type { Order } from "@/lib/database.types";
 import { requireRole } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { currency, formatDateTime } from "@/lib/utils";
+
+type AdminOrder = Order & {
+  shops?: { name: string } | null;
+};
 
 export default async function AdminOrdersPage() {
   await requireRole(["admin"]);
@@ -12,12 +17,13 @@ export default async function AdminOrdersPage() {
     .select("*, shops(name)")
     .order("created_at", { ascending: false })
     .limit(100);
+  const typedOrders = (orders ?? []) as unknown as AdminOrder[];
 
   return (
     <div className="grid gap-6">
       <h1 className="text-2xl font-semibold">Orders</h1>
       <div className="grid gap-3">
-        {orders?.map((order) => (
+        {typedOrders.map((order) => (
           <Card key={order.id}>
             <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div>

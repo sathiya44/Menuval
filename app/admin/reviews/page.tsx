@@ -1,8 +1,13 @@
 import { Star } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import type { Review } from "@/lib/database.types";
 import { requireRole } from "@/lib/supabase/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/utils";
+
+type AdminReview = Review & {
+  shops?: { name: string } | null;
+};
 
 export default async function AdminReviewsPage() {
   await requireRole(["admin"]);
@@ -12,12 +17,13 @@ export default async function AdminReviewsPage() {
     .select("*, shops(name)")
     .order("created_at", { ascending: false })
     .limit(100);
+  const typedReviews = (reviews ?? []) as unknown as AdminReview[];
 
   return (
     <div className="grid gap-6">
       <h1 className="text-2xl font-semibold">Reviews</h1>
       <div className="grid gap-3">
-        {reviews?.map((review) => (
+        {typedReviews.map((review) => (
           <Card key={review.id}>
             <CardContent className="p-4">
               <div className="flex flex-wrap items-center gap-2">

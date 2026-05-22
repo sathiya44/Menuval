@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { QrCode, ReceiptText, Star, Utensils } from "lucide-react";
+import { QrCode, ReceiptText, Star, Utensils, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,11 +30,11 @@ export default async function VendorDashboardPage() {
     supabase.from("reviews").select("id", { count: "exact", head: true }).eq("shop_id", shop.id)
   ]);
 
-  const stats = [
-    ["Dishes", dishCount ?? 0, Utensils],
-    ["Orders", orderCount ?? 0, ReceiptText],
-    ["Reviews", reviewCount ?? 0, Star],
-    ["QR menu", `/menu/${shop.slug}`, QrCode]
+  const stats: { label: string; value: string | number; icon: LucideIcon }[] = [
+    { label: "Dishes", value: dishCount ?? 0, icon: Utensils },
+    { label: "Orders", value: orderCount ?? 0, icon: ReceiptText },
+    { label: "Reviews", value: reviewCount ?? 0, icon: Star },
+    { label: "QR menu", value: `/menu/${shop.slug}`, icon: QrCode }
   ];
   const menuUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/menu/${shop.slug}`;
 
@@ -51,8 +51,8 @@ export default async function VendorDashboardPage() {
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-4">
-        {stats.map(([label, value, Icon]) => (
-          <Card key={String(label)}>
+        {stats.map(({ label, value, icon: Icon }) => (
+          <Card key={label}>
             <CardHeader>
               <Icon className="h-5 w-5 text-primary" />
               <CardTitle className="text-sm">{label}</CardTitle>

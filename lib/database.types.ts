@@ -24,6 +24,7 @@ export type Database = {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["profiles"]["Insert"]>;
+        Relationships: [];
       };
       shops: {
         Row: {
@@ -53,6 +54,7 @@ export type Database = {
           slug: string;
         };
         Update: Partial<Database["public"]["Tables"]["shops"]["Insert"]>;
+        Relationships: [];
       };
       categories: {
         Row: {
@@ -70,6 +72,7 @@ export type Database = {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["categories"]["Insert"]>;
+        Relationships: [];
       };
       dishes: {
         Row: {
@@ -94,6 +97,7 @@ export type Database = {
           price: number;
         };
         Update: Partial<Database["public"]["Tables"]["dishes"]["Insert"]>;
+        Relationships: [];
       };
       orders: {
         Row: {
@@ -117,6 +121,7 @@ export type Database = {
           total_amount: number;
         };
         Update: Partial<Database["public"]["Tables"]["orders"]["Insert"]>;
+        Relationships: [];
       };
       order_items: {
         Row: {
@@ -136,6 +141,7 @@ export type Database = {
           unit_price: number;
         };
         Update: Partial<Database["public"]["Tables"]["order_items"]["Insert"]>;
+        Relationships: [];
       };
       reviews: {
         Row: {
@@ -152,6 +158,7 @@ export type Database = {
           rating: number;
         };
         Update: Partial<Database["public"]["Tables"]["reviews"]["Insert"]>;
+        Relationships: [];
       };
       subscriptions: {
         Row: {
@@ -170,6 +177,7 @@ export type Database = {
           plan: Plan;
         };
         Update: Partial<Database["public"]["Tables"]["subscriptions"]["Insert"]>;
+        Relationships: [];
       };
       payments: {
         Row: {
@@ -188,6 +196,7 @@ export type Database = {
           amount: number;
         };
         Update: Partial<Database["public"]["Tables"]["payments"]["Insert"]>;
+        Relationships: [];
       };
       shop_public_links: {
         Row: {
@@ -202,6 +211,7 @@ export type Database = {
           slug: string;
         };
         Update: Partial<Database["public"]["Tables"]["shop_public_links"]["Insert"]>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;
