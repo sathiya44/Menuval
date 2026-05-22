@@ -149,6 +149,13 @@ export function MenuCart({
           </Card>
           );
         })}
+        {filtered.length === 0 ? (
+          <Card className="border-dashed">
+            <CardContent className="p-8 text-center text-sm text-muted-foreground">
+              No dishes are available in this section yet.
+            </CardContent>
+          </Card>
+        ) : null}
       </section>
       <aside className="order-first h-fit rounded-lg border bg-card p-4 shadow-sm lg:order-none lg:sticky lg:top-20">
         <div className="flex items-center gap-2 font-semibold">

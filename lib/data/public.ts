@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { Dish, Shop } from "@/lib/database.types";
 
 export type PublicShop = Shop & {
@@ -67,13 +68,14 @@ export async function getApprovedShops(query?: string) {
 }
 
 export async function getPublicMenu(slug: string) {
-  const supabase = await createClient();
+  const requestClient = await createClient();
+  const admin = createAdminClient();
   const normalizedSlug = slug.trim().toLowerCase();
   const {
     data: { user }
-  } = await supabase.auth.getUser();
+  } = await requestClient.auth.getUser();
 
-  const { data: directShop } = await supabase
+  const { data: directShop } = await admin
     .from("shops")
     .select("*")
     .ilike("slug", normalizedSlug)
@@ -82,10 +84,9 @@ export async function getPublicMenu(slug: string) {
   let shop = directShop;
 
   if (!shop) {
-    const { data: shops } = await supabase
+    const { data: shops } = await admin
       .from("shops")
       .select("*")
-      .eq("is_approved", true)
       .eq("is_restricted", false);
 
     shop =
@@ -98,7 +99,7 @@ export async function getPublicMenu(slug: string) {
 
   let isAdmin = false;
   if (user) {
-    const { data: profile } = await supabase
+    const { data: profile } = await requestClient
       .from("profiles")
       .select("role")
       .eq("id", user.id)
@@ -110,15 +111,18 @@ export async function getPublicMenu(slug: string) {
   const isPublic = shop.is_approved && !shop.is_restricted;
   if (!isPublic && !canPreview) return null;
 
-  const [{ data: categories }, { data: dishes }] = await Promise.all([
-    supabase.from("categories").select("*").eq("shop_id", shop.id).order("sort_order"),
-    supabase
+  const [{ data: categories, error: categoriesError }, { data: dishes, error: dishesError }] = await Promise.all([
+    admin.from("categories").select("*").eq("shop_id", shop.id).order("sort_order"),
+    admin
       .from("dishes")
       .select("*")
       .eq("shop_id", shop.id)
       .order("is_offer", { ascending: false })
       .order("name")
   ]);
+
+  if (categoriesError) console.error("Public menu category lookup failed", categoriesError);
+  if (dishesError) console.error("Public menu dish lookup failed", dishesError);
 
   return { shop, categories: categories ?? [], dishes: dishes ?? [] };
 }
