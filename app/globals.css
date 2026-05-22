@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 42 33% 97%;
+    --foreground: 220 18% 13%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 18% 13%;
+    --primary: 154 56% 26%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 31 94% 91%;
+    --secondary-foreground: 24 42% 22%;
+    --muted: 48 18% 91%;
+    --muted-foreground: 220 9% 39%;
+    --accent: 199 74% 88%;
+    --accent-foreground: 205 54% 19%;
+    --destructive: 0 73% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 45 13% 84%;
+    --input: 45 13% 84%;
+    --ring: 154 56% 26%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+.food-grid {
+  background-image:
+    linear-gradient(rgba(36, 96, 72, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(36, 96, 72, 0.07) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
