@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Menu, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 
 export function SiteHeader() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const isDashboard = pathname.startsWith("/vendor") || pathname.startsWith("/admin");
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -24,15 +23,16 @@ export function SiteHeader() {
   }, []);
 
   function toggleDashboardMenu() {
+    const query = window.location.search;
+
     if (menuOpen) {
-      const query = searchParams.toString();
-      window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
+      window.history.replaceState(null, "", `${pathname}${query}`);
       setMenuOpen(false);
       window.dispatchEvent(new CustomEvent("dashboard-menu-toggle", { detail: false }));
       return;
     }
 
-    window.history.replaceState(null, "", `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}#dashboard-menu`);
+    window.history.replaceState(null, "", `${pathname}${query}#dashboard-menu`);
     setMenuOpen(true);
     window.dispatchEvent(new CustomEvent("dashboard-menu-toggle", { detail: true }));
   }
