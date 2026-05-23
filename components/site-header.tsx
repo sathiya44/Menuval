@@ -17,10 +17,22 @@ export function SiteHeader() {
       setMenuOpen(window.location.hash === "#dashboard-menu");
     }
 
+    function syncFromDashboardMenu(event: Event) {
+      setMenuOpen(Boolean((event as CustomEvent<boolean>).detail));
+    }
+
     syncMenuState();
     window.addEventListener("hashchange", syncMenuState);
-    return () => window.removeEventListener("hashchange", syncMenuState);
+    window.addEventListener("dashboard-menu-toggle", syncFromDashboardMenu);
+    return () => {
+      window.removeEventListener("hashchange", syncMenuState);
+      window.removeEventListener("dashboard-menu-toggle", syncFromDashboardMenu);
+    };
   }, []);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
 
   function toggleDashboardMenu() {
     const query = window.location.search;
