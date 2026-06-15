@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { requireRole } from "@/lib/supabase/auth";
 import { dishSchema, orderStatusSchema, shopSchema } from "@/lib/validators/shop";
 import { safeUploadName, validateImageUpload } from "@/lib/security/uploads";
@@ -150,12 +151,36 @@ export async function deleteDish(formData: FormData) {
 }
 
 export async function updateOrderStatus(formData: FormData) {
-  await requireRole(["vendor", "admin"]);
+  const profile = await requireRole(["vendor", "admin"]);
   const values = orderStatusSchema.parse({
     orderId: formData.get("orderId"),
     status: formData.get("status")
   });
   const supabase = await createClient();
+  const admin = createAdminClient();
+  const { data: order } = await admin
+    .from("orders")
+    .select("id, shop_id")
+    .eq("id", values.orderId)
+    .single();
+
+  if (!order) {
+    return { ok: false, error: "Order was not found." };
+  }
+
+  if (profile.role !== "admin") {
+    const { data: shop } = await supabase
+      .from("shops")
+      .select("id")
+      .eq("vendor_id", profile.id)
+      .eq("id", order.shop_id)
+      .maybeSingle();
+
+    if (!shop) {
+      return { ok: false, error: "You cannot update this order." };
+    }
+  }
+
   const timestampColumn = {
     pending: null,
     accepted: "accepted_at",
@@ -169,7 +194,7 @@ export async function updateOrderStatus(formData: FormData) {
     updates[timestampColumn] = new Date().toISOString();
   }
 
-  const { error } = await supabase
+  const { error } = await admin
     .from("orders")
     .update(updates)
     .eq("id", values.orderId);

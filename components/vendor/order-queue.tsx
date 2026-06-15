@@ -37,13 +37,17 @@ export function OrderQueue({ shopId, initialOrders }: { shopId: string; initialO
   const supabase = useMemo(() => createClient(), []);
 
   const refreshOrders = useCallback(async () => {
-    const { data } = await supabase
-      .from("orders")
-      .select("*, order_items(*)")
-      .eq("shop_id", shopId)
-      .order("created_at", { ascending: true });
-    setOrders((data ?? []) as unknown as OrderWithItems[]);
-  }, [shopId, supabase]);
+    const response = await fetch(`/api/vendor/orders?shopId=${shopId}`, { cache: "no-store" });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      setError(payload?.error ?? "Could not refresh orders.");
+      return;
+    }
+
+    setOrders((payload?.orders ?? []) as OrderWithItems[]);
+    setError("");
+  }, [shopId]);
 
   useEffect(() => {
     const channel = supabase

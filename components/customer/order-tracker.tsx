@@ -45,7 +45,13 @@ export function OrderTracker({ token }: { token: string }) {
         return;
       }
 
-      setOrder(payload.order);
+      const trackedOrder = payload.order as TrackedOrder & {
+        shops?: TrackedOrder["shops"] | TrackedOrder["shops"][];
+      };
+      setOrder({
+        ...trackedOrder,
+        shops: Array.isArray(trackedOrder.shops) ? trackedOrder.shops[0] ?? null : trackedOrder.shops ?? null
+      });
       setError("");
     } finally {
       setLoading(false);

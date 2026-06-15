@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 
 export async function GET(
   _request: Request,
@@ -16,29 +15,42 @@ export async function GET(
   }
 
   const { token } = await params;
-  const supabase = await createClient();
+  const normalizedToken = decodeURIComponent(token).trim().toUpperCase();
 
-  const { data: order, error } = await (supabase as any).rpc("get_public_order_by_token", {
-    p_token: token.toUpperCase()
-  });
-
-  const trackedOrder = Array.isArray(order) ? order[0] : order;
-
-  if (error || !trackedOrder) {
-    if (error) console.error("Order lookup RPC failed, trying server fallback", error);
-    const admin = createAdminClient();
-    const { data: fallbackOrder, error: fallbackError } = await admin
-      .from("orders")
-      .select("token, status, total_amount, accepted_at, preparing_at, ready_at, completed_at, created_at, shops(name, slug)")
-      .eq("token", token.toUpperCase())
-      .single();
-
-    if (fallbackError || !fallbackOrder) {
-      return NextResponse.json({ error: "Order was not found." }, { status: 404 });
-    }
-
-    return NextResponse.json({ order: fallbackOrder });
+  if (!normalizedToken) {
+    return NextResponse.json({ error: "Order token is required." }, { status: 400 });
   }
 
-  return NextResponse.json({ order: trackedOrder });
+  const admin = createAdminClient();
+  const { data: order, error } = await admin
+    .from("orders")
+    .select("token, status, total_amount, accepted_at, preparing_at, ready_at, completed_at, created_at, shop_id")
+    .eq("token", normalizedToken)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Order lookup failed", error);
+    return NextResponse.json({ error: "Could not load this order." }, { status: 500 });
+  }
+
+  if (!order) {
+    return NextResponse.json({ error: "Order was not found." }, { status: 404 });
+  }
+
+  const { data: shop, error: shopError } = await admin
+    .from("shops")
+    .select("name, slug")
+    .eq("id", order.shop_id)
+    .maybeSingle();
+
+  if (shopError) {
+    console.error("Order shop lookup failed", shopError);
+  }
+
+  return NextResponse.json({
+    order: {
+      ...order,
+      shops: shop ?? null
+    }
+  });
 }
